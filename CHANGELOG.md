@@ -15,6 +15,12 @@ You can find our backwards-compatibility policy [here](https://github.com/hynek/
 
 ## [Unreleased](https://github.com/hynek/structlog/compare/26.1.0...HEAD)
 
+### Changed
+
+- *Rich* is now imported when it's used to render a traceback or a `repr`, not when *structlog* is imported.
+  Importing *Rich* costs dozens of modules that every process importing *structlog* paid, whether or not it ever rendered a traceback.
+  `structlog.dev.rich`, `structlog.dev.Console`, `structlog.dev.Traceback`, and `structlog.tracebacks.rich` keep working; they are resolved on first access.
+
 
 ## [26.1.0](https://github.com/hynek/structlog/compare/25.5.0...26.1.0) - 2026-06-06
 

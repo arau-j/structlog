@@ -16,6 +16,7 @@ import warnings
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from importlib.util import find_spec
 from io import StringIO
 from types import ModuleType
 from typing import (
@@ -45,13 +46,43 @@ try:
 except ImportError:
     better_exceptions = None
 
-try:
-    import rich
+# Rich is imported when a traceback is rendered, not with this module: it costs
+# dozens of modules that every process importing structlog would otherwise pay.
+# Whether it is installed is all the module needs to know up front.
+_RICH_INSTALLED = find_spec("rich") is not None
 
-    from rich.console import Console
-    from rich.traceback import Traceback
-except ImportError:
-    rich = None  # type: ignore[assignment]
+
+def __getattr__(name: str) -> Any:
+    # ``rich`` (the Rich module or ``None``) and, with Rich installed,
+    # ``Console`` and ``Traceback`` used to be module attributes because they
+    # were imported with this module. Keep them, resolved on first access.
+    if name == "rich":
+        try:
+            import rich
+        except ImportError:
+            rich = None  # type: ignore[assignment]
+
+        globals()["rich"] = rich
+
+        return rich
+
+    if name == "Console" and _RICH_INSTALLED:
+        from rich.console import Console
+
+        globals()["Console"] = Console
+
+        return Console
+
+    if name == "Traceback" and _RICH_INSTALLED:
+        from rich.traceback import Traceback
+
+        globals()["Traceback"] = Traceback
+
+        return Traceback
+
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
 
 __all__ = [
     "ConsoleRenderer",
@@ -432,6 +463,9 @@ class RichTracebackFormatter:
     suppress: Sequence[str | ModuleType] = ()
 
     def __call__(self, sio: TextIO, exc_info: ExcInfo) -> None:
+        from rich.console import Console
+        from rich.traceback import Traceback
+
         if self.width == -1:
             warnings.warn(
                 "Use None to use the terminal width instead of -1.",
@@ -466,7 +500,7 @@ class RichTracebackFormatter:
         console.print(tb)
 
 
-if rich is None:
+if not _RICH_INSTALLED:
 
     def rich_traceback(sio: TextIO, exc_info: ExcInfo) -> None:
         raise ModuleNotFoundError(
@@ -525,7 +559,7 @@ def better_traceback(sio: TextIO, exc_info: ExcInfo) -> None:
     sio.write("\n" + "".join(better_exceptions.format_exception(*exc_info)))
 
 
-if rich is not None:
+if _RICH_INSTALLED:
     default_exception_formatter = rich_traceback
     default_monochrome_exception_formatter = rich_monochrome_traceback
 elif better_exceptions is not None:

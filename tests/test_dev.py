@@ -4,6 +4,7 @@
 # repository for complete details.
 
 import pickle
+import subprocess
 import sys
 
 from io import StringIO
@@ -1227,3 +1228,20 @@ class TestConsoleRendererProperties:
         cr.colors = next_colors
 
         assert custom_formatter is cr.exception_formatter
+
+
+def test_importing_structlog_does_not_import_rich():
+    """
+    Rich is imported when a traceback is rendered, not with structlog.
+    """
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys, structlog, structlog.dev, structlog.tracebacks;"
+                "assert 'rich' not in sys.modules, 'rich imported eagerly'"
+            ),
+        ],
+        check=True,
+    )

@@ -24,13 +24,6 @@ from traceback import walk_tb
 from types import ModuleType, TracebackType
 from typing import Any, TypeAlias
 
-
-try:
-    import rich
-    import rich.pretty
-except ImportError:
-    rich = None  # type: ignore[assignment]
-
 from .typing import ExcInfo
 
 
@@ -44,6 +37,47 @@ __all__ = [
     "safe_str",
     "to_repr",
 ]
+
+
+def _import_rich() -> ModuleType | None:
+    """
+    Rich with its pretty-printer, or ``None`` if it's not installed.
+
+    Rich is imported on first use rather than with this module: importing it
+    costs dozens of modules that every process importing *structlog* would
+    otherwise pay, whether or not it ever renders a traceback.
+    """
+    try:
+        import rich.pretty
+    except ImportError:
+        return None
+
+    import rich
+
+    return rich
+
+
+def _rich() -> ModuleType | None:
+    """
+    The ``rich`` module attribute, importing Rich on first use.
+
+    Read through the module so that setting ``structlog.tracebacks.rich``
+    (for example to ``None`` in tests) keeps working.
+    """
+    if "rich" not in globals():
+        globals()["rich"] = _import_rich()
+
+    rich: ModuleType | None = globals()["rich"]
+
+    return rich
+
+
+def __getattr__(name: str) -> Any:
+    if name == "rich":
+        return _rich()
+
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
 SHOW_LOCALS = True
@@ -152,7 +186,8 @@ def to_repr(
        is available.  Call :func:`repr()` on strings in fallback
        implementation.
     """
-    if use_rich and rich is not None:
+    rich = _rich() if use_rich else None
+    if rich is not None:
         # Let rich render the repr if it is available.
         # It produces much better results for containers and dataclasses/attrs.
         obj_repr = rich.pretty.traverse(
